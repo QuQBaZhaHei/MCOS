@@ -10,10 +10,7 @@
 + 段页式内存管理，每个程序拥有4GB的虚拟内存，内核空间和用户空间隔离。
 + 简单的文件系统，支持文件的增删改查，不支持目录。
 + 几个系统调用 open write read malloc putchar puts gets createThread
-<<<<<<< HEAD
 + 加载指定扇区的ELF32文件，手动写入扇区后修改源代码运行。
-=======
->>>>>>> null
 
 # 使用方法
 ## 环境搭建
@@ -62,11 +59,7 @@ make kernel3
 make a
 make b
 ```
-<<<<<<< HEAD
 制作a.bin和b.bin文件,制作完成后文件在user目录中，这两个文件为两个示例用户程序，a.bin内的代码会循环打印“\nHello\n”,b.bin内的代码会循环打印“\nWorld\n”，两个示例此程序均使用C编写，在user目录下。
-=======
-制作a.bin和b.bin文件,制作完成后文件在user目录中，这两个文件为两个实例用户程序，a.bin内的代码会循环打印“\nHello\n”,b.bin内的代码会循环打印“\nWorld\n”。
->>>>>>> null
 
 ### 使用 fixvhdwr.exe 写入.vhd文件
 按照下图所示方法完成如下步骤
@@ -113,8 +106,4 @@ make b
 
 # 版权
 
-<<<<<<< HEAD
 代码内容采用 新BSD许可
-=======
-代码内容采用 新BSD许可
->>>>>>> null
