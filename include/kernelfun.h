@@ -66,6 +66,10 @@ extern Uint32 loopQueue_isFull(LoopQueue* loopQueue);
 
 extern void loopQueue_push(LoopQueue* loopQueue, Byte value);
 
+extern int loopLinkList_pushBack(LoopLinkList* list, void* node);
+
+extern int loopLinkList_erase(LoopLinkList* list, void* node);
+
 //====================================================================================
 
 
@@ -86,34 +90,40 @@ void* mallocKernel(Uint32 byteSize);
 void* malloc(Pcb* pcb, Uint32 byteSize);
 
 //将进程从就绪队列移除
-void removeReadyPcb(Pcb* pcb);
+void eraseReadyPcb(Pcb* pcb);
 
 //将进程添加到就绪队列
 void appendReadyPcb(Pcb* pcb);
 
 //将进程从阻塞队列移除
-void removeWaitPcb(Pcb* pcb);
+void eraseWaitPcb(Pcb* pcb);
 
 //将进程添加到阻塞队列
 void appendWaitPcb(Pcb* pcb);
 
 //在进程中创建一个线程
-void appendTcb(Pcb* pcb, Tcb* tcb);
+void appendReadyTcb(Pcb* pcb, Tcb* tcb);
 
 //在进程中移除一个线程
-void removeTcb(Pcb* pcb, Tcb* tcb);
+void eraseReadyTcb(Pcb* pcb, Tcb* tcb);
+
+//在进程中创建一个线程
+void appendWaitTcb(Pcb* pcb, Tcb* tcb);
+
+//在进程中移除一个线程
+void eraseWaitTcb(Pcb* pcb, Tcb* tcb);
 
 //阻塞一个进程
 void sleepProcess(Pcb* pcb);
 
 //阻塞一个线程
-void sleepThread(Tcb* tcb);
+void sleepThread(Pcb* pcb, Tcb* tcb);
 
 //唤醒一个进程
 void wakeUpProcess(Pcb* pcb);
 
 //唤醒一个线程
-void wakeUpThread(Tcb* tcb);
+void wakeUpThread(Pcb* pcb, Tcb* tcb);
 
 //字符串拷贝
 void strcpy(Byte* str1, Byte* str2);
@@ -152,10 +162,9 @@ void createTcb(Pcb* pcb, Uint32 entry) {
 	tcb->gs = r3DataSel;
 	tcb->ss0 = 0x08;
 	tcb->ss = r3DataSel;
-	pcb->tcbHead = tcb;
-	pcb->tcbCur = tcb;
 
 	PUSH_SREG(tcb->cs, tcb->ds, tcb->es, tcb->fs, tcb->gs, tcb->ss0, tcb->ss, tcb->esp0, tcb->esp, tcb->eip);
+	appendReadyTcb(pcb, tcb);
 
 	STI;
 }
@@ -225,37 +234,11 @@ void* malloc(Pcb* pcb, Uint32 byteSize) {
 	return p;
 }
 
-void removeReadyPcb(Pcb* pcb) {
-	static Uint32 signal = 0;
-	while (signal == 1);
+void eraseReadyPcb(Pcb* pcb) {
 	CLI;
-	signal = 1;
-	STI;
 
-	Pcb* p = readyPcbHead;
+	loopLinkList_erase(readyPcbQueue, pcb);
 
-	//如果只有一个PCB
-	if (readyPcbHead == pcb) {
-		readyPcbHead = NULL;
-		readyPcbEnd = NULL;
-	}
-	else {
-		//基本的删除链表节点的操作
-		if (p != NULL && pcb != NULL) {
-			while (p->nextPCB != pcb && p->nextPCB != NULL) {
-				p = p->nextPCB;
-			}
-			if (p->nextPCB != NULL) {
-				p->nextPCB = pcb ->nextPCB;
-			}
-			if (p->nextPCB == NULL) {
-				readyPcbEnd = p;
-			}
-		}
-	}
-
-	CLI;
-	signal = 0;
 	STI;
 }
 
@@ -265,123 +248,97 @@ void appendReadyPcb(Pcb* pcb) {
 	//如果目前进程阻塞
 	if (pcb->state == PCB_STATE_WAIT) {
 		//从阻塞队列中移除
-		removeWaitPcb(pcb);
+		loopLinkList_erase(waitPcbQueue, pcb);
 		//切换为就绪态
 		pcb->state = PCB_STATE_READY;
 	}
 	//如果目前没有PCB
-	if (readyPcbHead == NULL) {
-		readyPcbHead = pcb;
-		readyPcbEnd = pcb;
-	}
-	else {
-		//基本的链表添加操作
-		readyPcbEnd->nextPCB = pcb;
-		readyPcbEnd = pcb;
-		readyPcbEnd->nextPCB = NULL;
-	}
+	loopLinkList_pushBack(readyPcbQueue, pcb);
 	STI;
 }
 
-void removeWaitPcb(Pcb* pcb) {
+void eraseWaitPcb(Pcb* pcb) {
 	CLI;
 
-	Pcb* p = waitPcbHead;
-	//如果只有一个PCB
-	if (waitPcbHead == pcb) {
-		waitPcbHead = NULL;
-		waitPcbEnd = NULL;
-	}
-	else {
-		//基本的删除链表节点的操作
-		if (p != NULL && pcb != NULL) {
-			while (p->nextPCB != pcb && p->nextPCB != NULL) {
-				p = p->nextPCB;
-			}
-			if (p->nextPCB != NULL) {
-				p->nextPCB = pcb ->nextPCB;
-			}
-			if (p->nextPCB == NULL) {
-				waitPcbEnd = p;
-			}
-		}
-	}
+	loopLinkList_erase(waitPcbQueue, pcb);
 
 	STI;
 }
 
 void appendWaitPcb(Pcb* pcb) {
-	static Uint32 signal = 0;
-	while (signal == 1);
 	CLI;
-	signal = 1;
-	STI;
 
 	//如果之前进程是就绪态
-	if (pcb->state == PCB_STATE_READY) {
+	if (pcb->state == PCB_STATE_READY || pcb->state == PCB_STATE_RUN) {
 		//从就绪队列中移除
-		removeReadyPcb(pcb);
+		loopLinkList_erase(readyPcbQueue, pcb);
 		//切换为阻塞态
 		pcb->state = PCB_STATE_WAIT;
 	}
-	//如果没有PCB
-	if (waitPcbHead == NULL) {
-		waitPcbHead = pcb;
-		waitPcbEnd = pcb;
-	}
-	else {
-		//基本的链表追加操作
-		waitPcbEnd->nextPCB = pcb;
-		waitPcbEnd = pcb;
-		waitPcbEnd->nextPCB = NULL;
-	}
+	loopLinkList_pushBack(waitPcbQueue, pcb);
 
-	CLI;
-	signal = 0;
 	STI;
 }
 
-void appendTcb(Pcb* pcb, Tcb* tcb) {
-	static Uint32 signal = 0;
-	while (signal == 1);
+void appendReadyTcb(Pcb* pcb, Tcb* tcb) {
 	CLI;
-	signal = 1;
-	STI;
-
-	//如果该进程下没有线程
-	if (pcb->tcbHead == NULL) {
-		pcb->tcbCur = tcb;
-		pcb->tcbHead = tcb;
-		tcb->next = NULL;
-	}
-	else {
-		//基本的链表追加操作
-		Tcb* tmp = pcb->tcbHead;
-		pcb->tcbHead = tcb;
-		tcb->next = tmp;
+	
+	if (tcb->state == TCB_STATE_WAIT) {
+		tcb->state = TCB_STATE_READY;
+		loopLinkList_erase(pcb->waitTcbQueue, tcb);
 	}
 
-	CLI;
-	signal = 0;
-	STI;
+	loopLinkList_pushBack(pcb->readyTcbQueue, tcb);
 
+	STI;
+}
+
+void eraseReadyTcb(Pcb* pcb, Tcb* tcb) {
+	CLI;
+	
+	loopLinkList_erase(pcb->readyTcbQueue, tcb);
+
+	STI;
+}
+
+void appendWaitTcb(Pcb* pcb, Tcb* tcb) {
+	CLI;
+
+	if (tcb->state == TCB_STATE_READY || tcb->state == TCB_STATE_RUN) {
+		tcb->state = TCB_STATE_WAIT;
+		loopLinkList_erase(pcb->readyTcbQueue, tcb);
+	}
+	loopLinkList_pushBack(pcb->waitTcbQueue, tcb);
+
+	STI;
+}
+
+void eraseWaitTcb(Pcb* pcb, Tcb* tcb) {
+	CLI;
+
+	loopLinkList_erase(pcb->waitTcbQueue, tcb);
+
+	STI;
 }
 
 void sleepProcess(Pcb* pcb) {
-	if (pcb->state == PCB_STATE_RUN) {
+	if (pcb->state == PCB_STATE_RUN || pcb->state == PCB_STATE_READY) {
 		//从就绪队列中移除
-		removeReadyPcb(pcb);
+		eraseReadyPcb(pcb);
 		//添加到阻塞队列
 		appendWaitPcb(pcb);
+		curPcbNode = curPcbNode->next;
 		//启动调度
 		SWITCH_TASK;
 	}
 }
 
-void sleepThread(Tcb* tcb) {
-	if (tcb->state == TCB_STATE_RUN) {
-		//设置为阻塞
+void sleepThread(Pcb* pcb, Tcb* tcb) {
+	if (tcb->state == TCB_STATE_READY || tcb->state == TCB_STATE_RUN) {
 		tcb->state = TCB_STATE_WAIT;
+		eraseReadyTcb(pcb, tcb);
+		appendWaitTcb(pcb, tcb);
+		pcb->curTcbNode = pcb->curTcbNode->next;
 		//启动调度
 		SWITCH_TASK;
 	}
@@ -390,15 +347,18 @@ void sleepThread(Tcb* tcb) {
 void wakeUpProcess(Pcb* pcb) {
 	if (pcb->state == PCB_STATE_WAIT) {
 		//从阻塞队列中移除
-		removeWaitPcb(pcb);
+		eraseWaitPcb(pcb);
 		//添加到就绪队列
 		appendReadyPcb(pcb);
 	}
 }
 
-void wakeUpThread(Tcb* tcb) {
+void wakeUpThread(Pcb* pcb, Tcb* tcb) {
 	if (tcb->state == TCB_STATE_WAIT) {
-		//设置为就绪态
+		//从阻塞队列中移除
+		eraseWaitTcb(pcb, tcb);
+		//添加到就绪队列
+		appendReadyTcb(pcb, tcb);
 		tcb->state = TCB_STATE_READY;
 	}
 }

@@ -8,6 +8,7 @@
 #include "hashTable.h"
 #include "fileSys.h"
 #include "loopQueue.h"
+#include "loopLinkList.h"
 
 extern void _asm_test();
 
@@ -16,6 +17,9 @@ void iniSysCall();
 
 //初始化中断描述符表
 void iniIDT();
+
+//初始化进程队列
+void iniPcbQueue();
 
 //初始化内核TCB
 void iniKernelTcb();
@@ -39,11 +43,6 @@ void loop() {
 }
 
 Pcb* test() {
-	Pcb* pcb = (Pcb*)mallocKernel(sizeof(Pcb));
-	pcb->cr3Address = runPcb->cr3Address;
-	pcb->nextPCB = NULL;
-	createTcb(pcb, (Uint32)loop);
-	return pcb;
 }
 
 int main(void) {
@@ -53,13 +52,14 @@ int main(void) {
 	iniFileSys();
 	iniRing3GdtDescriptor();
 	iniTss();
+	iniPcbQueue();
 	iniKernelTcb();
 	iniShellTcb();
 	//建立键盘缓冲区
 	keyBoardBuffer = makeLoopQueue(512);
-	runPcb = kernelPcb;
-	appendReadyPcb(kernelPcb);
-	//appendReadyPcb(test);
+	loopLinkList_pushBack(readyPcbQueue, kernelPcb);
+	curPcbNode = loopLinkList_getHead(readyPcbQueue);
+	STI;
 	appendReadyPcb(loadUserProgram(50000));
 	appendReadyPcb(loadUserProgram(60000));
 	char c;
@@ -166,13 +166,25 @@ void iniIDT() {
 	_asm_ini8259A();
 }
 
+void iniPcbQueue() {
+	readyPcbQueue = makeLoopLinkList();
+	waitPcbQueue = makeLoopLinkList();
+
+	kernelPcb->readyTcbQueue = makeLoopLinkList();
+	kernelPcb->waitTcbQueue = makeLoopLinkList();
+}
+
 void iniKernelTcb() {
 	Byte descriptor[8];
 	kernelPcb = (Pcb*)mallocKernel(sizeof(Pcb));
-	kernelPcb->state = TCB_STATE_READY;
-	kernelTcb->state = TCB_STATE_READY;
+	kernelTcb = (Tcb*)mallocKernel(sizeof(Tcb));
+	kernelPcb->readyTcbQueue = makeLoopLinkList();
+	kernelPcb->waitTcbQueue = makeLoopLinkList();
+	kernelPcb->state = PCB_STATE_RUN;
 	kernelPcb->ID = 0;
-	kernelPcb->nextPCB = NULL;
+	kernelTcb->state = TCB_STATE_RUN;
+	strcpy(kernelPcb->name, "\nkernelPcb\n");
+	strcpy(kernelTcb->name, "\nkernelTcb\n");
 	
 	__asm__ volatile (
 		"movl %%cr3,%0;"
@@ -180,20 +192,18 @@ void iniKernelTcb() {
 		:
 		:
 	);
-
-	kernelTcb = (Tcb*)mallocKernel(sizeof(Tcb));
-	kernelTcb->next = NULL;
-	kernelPcb->tcbCur = kernelTcb;
-	kernelPcb->tcbHead = kernelTcb;
+	loopLinkList_pushBack(kernelPcb->readyTcbQueue, kernelTcb);
+	runPcb = kernelPcb;
+	runTcb = kernelTcb;
 }
 
 void iniShellTcb() {
 	shellTcb = (Tcb*)mallocKernel(sizeof(Tcb));
 	shellTcb->ID = 1;
-	shellTcb->next = NULL;
 	shellTcb->state = TCB_STATE_READY;
 	shellTcb->eip = (Uint32)shell;
 	shellTcb->esp0 = (Uint32)mallocKernel(4096) + 4096;
+	strcpy(shellTcb->name, "\nshellTcb\n");
 
 	shellTcb->cs = 0x10;
 	shellTcb->ds = 0x08;
@@ -207,7 +217,9 @@ void iniShellTcb() {
 	PUSH_SREG(shellTcb->cs, shellTcb->ds, shellTcb->es, shellTcb->fs, shellTcb->gs, 
 			shellTcb->ss0, shellTcb->ss, shellTcb->esp0, 0, shellTcb->eip);
 
-	kernelPcb->tcbHead->next = shellTcb;
+	loopLinkList_pushBack(kernelPcb->readyTcbQueue, shellTcb);
+
+	kernelPcb->curTcbNode = loopLinkList_getHead(kernelPcb->readyTcbQueue);
 
 }
 
@@ -265,11 +277,11 @@ Pcb* loadUserProgram(Uint32 diskSector) {
 	Uint32 oldCr3 = kernelPcb->cr3Address;
 	Pcb* pcb = (Pcb*)mallocKernel(sizeof(Pcb));
 	Tcb* tcb = (Tcb*)mallocKernel(sizeof(Tcb));
-	tcb->next = NULL;
-	pcb->tcbHead = tcb;
-	pcb->tcbCur = tcb;
-	tcb->ID = ID++;
-	tcb->esp0 = (Uint32)mallocKernel(4096) + 4096;
+	pcb->readyTcbQueue = makeLoopLinkList();
+	pcb->waitTcbQueue = makeLoopLinkList();
+	tcb->state = TCB_STATE_READY;
+	appendReadyTcb(pcb, tcb);
+	tcb->esp0 = (Uint32)mallocKernel(0x50000) + 0x50000;
 	pcb->nextAddress = 4096;
 	
 	//分配一个4kb页作为页目录并拷贝内核页目录
@@ -370,7 +382,7 @@ Pcb* loadUserProgram(Uint32 diskSector) {
 	tcb->gs = r3DataSel;
 	tcb->ss0 = 0x08;
 	tcb->ss = r3DataSel;
-	tcb->esp = 4096;
+	tcb->esp = 0x100000;
 	tcb->esp00 = tcb->esp0;
 
 	PUSH_SREG(tcb->cs, tcb->ds, tcb->es, tcb->fs, tcb->gs, tcb->ss0, tcb->ss, tcb->esp0, tcb->esp, tcb->eip);

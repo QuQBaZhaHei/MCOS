@@ -28,20 +28,12 @@ int sched(Pcb** curPcb, Pcb** nextPcb, Tcb** curTcb, Tcb** nextTcb, Tss** tss , 
 	*tss = &TSS;
 
 	Pcb* ppcb = (Pcb*)(curPcbNode->data);
-	Tcb* ptcb = (Tcb*)(ppcb->curTcbNode->data);
-
-	*curPcb = runPcb;
-	*curTcb = runTcb;
+	Tcb* ptcb = NULL;
 
 	if (ppcb->curTcbNode->next != loopLinkList_getHead(ppcb->readyTcbQueue)) {
 		//执行线程切换
+		*curTcb = (Tcb*)(ppcb->curTcbNode->data);
 		*nextTcb = (Tcb*)(ppcb->curTcbNode->next->data);
-		
-		ptcb = *curTcb;
-		if (ptcb->state != TCB_STATE_WAIT) {
-			ptcb->state = TCB_STATE_READY;
-		}
-
 		(*curTcb)->state = TCB_STATE_READY;
 		(*nextTcb)->state = TCB_STATE_RUN;
 		runTcb = *nextTcb;
@@ -56,10 +48,10 @@ int sched(Pcb** curPcb, Pcb** nextPcb, Tcb** curTcb, Tcb** nextTcb, Tss** tss , 
 	}
 	else {
 		//执行进程切换
-		if (ppcb->state != PCB_STATE_WAIT) {
-			ppcb->state = PCB_STATE_READY;
-		}
+		*curPcb = ppcb;
+		ppcb->state = PCB_STATE_READY;
 		//ppcb->curTcbNode = loopLinkList_getHead(ppcb->readyTcbQueue);
+		*curTcb = (Tcb*)(ppcb->curTcbNode->data);
 		(*curTcb)->state = TCB_STATE_READY;
 
 		ppcb = (Pcb*)(curPcbNode->next->data);

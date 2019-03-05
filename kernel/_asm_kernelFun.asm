@@ -1,4 +1,4 @@
-;内核加载起始地址
+		;内核加载起始地址
 		final_mem_kernel_adress                     equ 0x10000
 		
 		;内核加载扇区

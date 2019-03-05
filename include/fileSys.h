@@ -103,7 +103,7 @@ void writeIblockThird(Byte* buffer, Iblock* iblockThird, Uint32 blockIndex, Uint
 void touchFile(Byte* name);
 
 //删除文件
-void removeFile(Fcb* fcb);
+void eraseFile(Fcb* fcb);
 
 //写文件
 void writeFile(Fcb* fcb, Byte* buffer, Uint32 logicStart, Uint32 byteSize);
@@ -321,7 +321,7 @@ Uint32 getFreeDirectorySector() {
 		:"r"(dataBitmap),"m"(sfcb->directoryBitmapLength)
 		:"memory","%eax","%ecx"
 	);
-	return sector + (sfcb->directoryBitmapSector);
+	return sector + (sfcb->directorySector);
 }
 
 Uint32 getFreeFcbSector() {
@@ -340,7 +340,7 @@ Uint32 getFreeFcbSector() {
 		:"r"(inodeBitmap),"m"(sfcb->fcbBitmapLength)
 		:"memory","%eax","%ecx"
 	);
-	return sector + (sfcb->fcbBitmapSector);
+	return sector + (sfcb->fcbSector);
 }
 
 Uint32 getFreeInodeSector() {
@@ -359,7 +359,7 @@ Uint32 getFreeInodeSector() {
 		:"r"(inodeBitmap),"m"(sfcb->inodeBitmapLength)
 		:"memory","%eax","%ecx"
 	);
-	return sector + (sfcb->inodeBitmapSector);
+	return sector + (sfcb->inodeSector);
 }
 
 Uint32 getFreeDataBlock() {
@@ -378,7 +378,7 @@ Uint32 getFreeDataBlock() {
 		:"r"(dataBitmap),"m"(sfcb->dataBitmapLength)
 		:"memory","%eax","%ecx"
 	);
-	return sector * DISK_BLOCK_SECTOR_COUNT + (sfcb->dataBitmapSector);
+	return sector * DISK_BLOCK_SECTOR_COUNT + (sfcb->dataSector);
 }
 
 void addDiskRequest(Byte* buffer, Uint32 type, Uint32 sector) {
@@ -391,7 +391,7 @@ void addDiskRequest(Byte* buffer, Uint32 type, Uint32 sector) {
 	
 	Drcb drcb;
 	//设置IO请求进程
-	drcb.pcb = runPcb;
+	drcb.pcb = (Pcb*)(curPcbNode->data);
 	drcb.buffer = buffer;
 	drcb.type = type;
 	drcb.sector = sector;
@@ -408,7 +408,7 @@ Drcb getNextDrcb() {
 
 void handleDiskRequest() {
 	//备份内存映射表
-	Uint32 oldCr3 = runPcb->cr3Address;
+	Uint32 oldCr3 = ((Pcb*)(curPcbNode->data))->cr3Address;
 	for (Uint32 i = 0; i < DrcbQueue->size; i++) {
 		//原子操作
 		CLI;
@@ -427,7 +427,7 @@ void handleDiskRequest() {
 		}
 
 		//唤醒任务
-		wakeUpThread(drcb.pcb->tcbCur);
+		wakeUpThread(drcb.pcb, (Tcb*)(drcb.pcb->curTcbNode->data));
 	}
 	
 	//恢复内存映射表
@@ -436,54 +436,54 @@ void handleDiskRequest() {
 
 void loadIblock(Byte* buffer, Uint32 index) {
 	addDiskRequest(buffer, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 512, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 1024, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 1024 + 512, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 2048, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 2048 + 512, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 3072, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 3072 + 512, DISK_REQUSET_TYPE_READ, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 }
 
 void saveIblock(Byte* buffer, Uint32 index) {
 	addDiskRequest(buffer, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 512, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 1024, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 1024 + 512, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 2048, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 2048 + 512, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 3072, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	addDiskRequest(buffer + 3072 + 512, DISK_REQUSET_TYPE_WRITE, index++);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 }
 
 void readIblock(Byte* buffer, Iblock* iblock, Uint32 start, Uint32 size) {
@@ -504,7 +504,7 @@ void readIblock(Byte* buffer, Iblock* iblock, Uint32 start, Uint32 size) {
 	else {
 		Uint32 k = 0;
 		addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, sector);
-		sleepThread(runPcb->tcbCur);
+		sleepThread(runPcb, runTcb);
 		for (Uint32 i = 0; (i < 512 - offset) && (size > 0) ; i++,size--) {
 			buffer[k++] = _buffer[offset + i];
 		}
@@ -512,7 +512,7 @@ void readIblock(Byte* buffer, Iblock* iblock, Uint32 start, Uint32 size) {
 			for (Uint32 i = 1; i < iblock->size; i++) {
 				sector = iblock->sector[blockIndex++];
 				addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, sector);
-				sleepThread(runPcb->tcbCur);
+				sleepThread(runPcb, runTcb);
 				for (Uint32 j = 0; (j < 512) && (size > 0) ; j++,size--) {
 					buffer[k++] = _buffer[j];
 				}
@@ -533,23 +533,23 @@ void writeIblock(Byte* buffer, Iblock* iblock, Uint32 start, Uint32 size) {
 	//计算起始偏移
 	Uint32 offset = start % 512;
 	addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, sector);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 	Uint32 k = 0;
 	for (Uint32 i = 0; (i < 512 - offset) && (size > 0); i++,size--) {
 		_buffer[offset + i] = buffer[k++];
 	}
 	addDiskRequest(_buffer, DISK_REQUSET_TYPE_WRITE, sector);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 	if (size != 0) {
 		for (Uint32 i = 1; i < iblock->size; i++) {
 			sector = iblock->sector[blockIndex++];
 			addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, sector);
-			sleepThread(runPcb->tcbCur);
+			sleepThread(runPcb, runTcb);
 			for (Uint32 j = 0; (j < 512) && (size > 0) ; j++,size--) {
 				_buffer[i] = buffer[k++];
 			}
 			addDiskRequest(_buffer, DISK_REQUSET_TYPE_WRITE, sector);
-			sleepThread(runPcb->tcbCur);
+			sleepThread(runPcb, runTcb);
 		}
 	}
 }
@@ -728,7 +728,7 @@ void writeIblockThird(Byte* buffer, Iblock* iblockThird, Uint32 blockIndex, Uint
 void touchFile(Byte* name) {
 	static Byte* _buffer = NULL;
 	if (_buffer == NULL) {
-		_buffer = (Byte*)mallocKernel(1024);
+		_buffer = (Byte*)mallocKernel(10000);
 	}
 
 
@@ -751,7 +751,7 @@ void touchFile(Byte* name) {
 
 	//写FCB到磁盘
 	memcpy(_buffer, fcb, 512);
-	_asm_writeDisk(_buffer, fcbSector);
+	_asm_swriteDisk(_buffer, fcbSector);
 
 	//写inode到磁盘
 	fileNull(_buffer, 512);
@@ -759,20 +759,19 @@ void touchFile(Byte* name) {
 	_asm_swriteDisk(_buffer, fcb->inodeIndex);
 
 	//写索引块到磁盘
-	_asm_swriteDisk((Byte*)(&(iblock)), inode.iblockIndex);
-	_asm_swriteDisk((Byte*)(&(iblock) + 1), inode.iblockIndex + 1);
-	_asm_swriteDisk((Byte*)(&(iblock) + 2), inode.iblockIndex + 2);
-	_asm_swriteDisk((Byte*)(&(iblock) + 3), inode.iblockIndex + 3);
+	saveIblock((Byte*)(&iblock), inode.iblockIndex);
+
 
 	//添加到映射表
 	hashTable_insert(FcbIndexTable, name, fcbSector);
+
 	//更新超级块信息
 	sfcb->fcbCount += 1;
 }
 
-void removeFile(Fcb* fcb) {
+void eraseFile(Fcb* fcb) {
 	fcb->state = FCB_TYPE_REMOVE;
-	hashTable_remove(FcbIndexTable, fcb->name);
+	hashTable_erase(FcbIndexTable, fcb->name);
 }
 
 void writeFile(Fcb* fcb, Byte* buffer, Uint32 logicStart, Uint32 byteSize) {
@@ -789,13 +788,13 @@ void writeFile(Fcb* fcb, Byte* buffer, Uint32 logicStart, Uint32 byteSize) {
 	//加载inode
 	fileNull(_buffer, 512);
 	addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, fcb->inodeIndex);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 	Inode inode = *((Inode*)(_buffer));
 
 	//加载索引
 	fileNull(_buffer, 4096);
 	addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, inode.iblockIndex);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 	Iblock iblock = *((Iblock*)(_buffer));
 
 	if (iblock.type == IBLOCK_TYPE_IBLOCK) {
@@ -830,7 +829,7 @@ void readFile(Fcb* fcb, Byte* buffer, Uint32 logicStart, Uint32 byteSize) {
 	//加载inode
 	fileNull(_buffer, 512);
 	addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, fcb->inodeIndex);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 	Inode inode = *((Inode*)(_buffer));
 
 	//加载索引
@@ -871,7 +870,7 @@ void extendFile(Fcb* fcb, Uint32 byteSize) {
 	//加载inode
 	fileNull(_buffer, 4096);
 	addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, fcb->inodeIndex);
-	sleepThread(runPcb->tcbCur);
+	sleepThread(runPcb, runTcb);
 
 	Inode inode = *((Inode*)(_buffer));
 

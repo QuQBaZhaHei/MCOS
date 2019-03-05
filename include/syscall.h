@@ -13,19 +13,22 @@
 /*
 	外部C函数声明
 */
+
+extern void touchFile(Byte* name);
+
 //====================================================================================
 
 struct HashTable* makeHashTable(Uint32 size, _hashCallBack hash);
 
 void hashTable_insertHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode);
 
-void hashTable_removeHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode);
+void hashTable_eraseHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode);
 
 void hashTable_insert(HashTable* hashTable, char* str, Uint32 value);
 
 Uint32 hashTable_find(HashTable* hashTable, char* str);
 
-void hashTable_remove(HashTable* hashTable, char* str);
+void hashTable_erase(HashTable* hashTable, char* str);
 
 void addDiskRequest(Byte* buffer, Uint32 type, Uint32 sector);
 
@@ -145,11 +148,9 @@ int gets(char* str) {
 }
 
 void syscall_createThread(Uint32 entry) {
-	createTcb(runPcb, entry);
 }
 
 void* syscall_malloc(Uint32 byteSize) {
-	return malloc(runPcb, byteSize);
 }
 
 void syscall_free(void* p) {
@@ -161,16 +162,22 @@ void syscall_open(File** fp, char* fileName, int flag) {
 	if (_buffer == NULL) {
 		_buffer = (Byte*)mallocKernel(512);
 	}
+
+	if (flag == 0) {
+		touchFile(fileName);
+	}
+
 	Uint32 index = hashTable_find(FcbIndexTable, fileName);
 	if (index == 0) {
 		*fp = NULL;
 	}
 	else {
 		addDiskRequest(_buffer, DISK_REQUSET_TYPE_READ, index);
-		sleepThread(runPcb->tcbCur);
+		sleepThread(runPcb, runTcb);
 		*fp = (File*)mallocKernel(sizeof(File));
 		memcpy(*fp, _buffer, sizeof(File));
 	}
+	
 }
 
 void syscall_read(File* fp, Byte* buffer, Uint32 startByte ,Uint32 byteSize) {
@@ -179,6 +186,7 @@ void syscall_read(File* fp, Byte* buffer, Uint32 startByte ,Uint32 byteSize) {
 
 void syscall_write(File* fp, Byte* buffer, Uint32 startByte ,Uint32 byteSize) {
 	writeFile(&(fp->fcb), buffer, startByte, byteSize);
+	_asm_puts(buffer);
 }
 
 void syscall_close(File* fp) {

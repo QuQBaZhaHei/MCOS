@@ -18,13 +18,13 @@ struct HashTable* makeHashTable(Uint32 size, _hashCallBack hash);
 
 void hashTable_insertHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode);
 
-void hashTable_removeHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode);
+void hashTable_eraseHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode);
 
 void hashTable_insert(HashTable* hashTable, char* str, Uint32 value);
 
 Uint32 hashTable_find(HashTable* hashTable, char* str);
 
-void hashTable_remove(HashTable* hashTable, char* str);
+void hashTable_erase(HashTable* hashTable, char* str);
 
 
 
@@ -42,11 +42,12 @@ struct HashTable* makeHashTable(Uint32 size, _hashCallBack hash) {
 
 void hashTable_insertHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode) {
     HashNode* p =hashNodeHead->head;
+    hashNodeHead->size += 1;
     hashNodeHead->head = hashNode;
     hashNode->next = p;
 }
 
-void hashTable_removeHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode) {
+void hashTable_eraseHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode) {
     if (hashNodeHead->head == hashNode) {
         hashNodeHead->head = hashNode->next;
     }
@@ -66,7 +67,7 @@ void hashTable_removeHashNode(HashNodeHead* hashNodeHead, HashNode* hashNode) {
 }
 
 void hashTable_insert(HashTable* hashTable, char* str, Uint32 value) {
-    HashNode* hashNode = (HashNode*)mallocKernel(sizeof(hashNode));
+    HashNode* hashNode = (HashNode*)mallocKernel(sizeof(HashNode));
     strcpy(hashNode->fileName, str);
     hashNode->fcbIndex = value;
     HashNodeHead* hashNodeHead = &(hashTable->data[hashTable->hash(str)]);
@@ -93,7 +94,7 @@ Uint32 hashTable_find(HashTable* hashTable, char* str) {
     }
 }
 
-void hashTable_remove(HashTable* hashTable, char* str) {
+void hashTable_erase(HashTable* hashTable, char* str) {
     Uint32 index = hashTable->hash(str);
     if (hashTable->data[index].size == 0) {
         _asm_puts("\nHashNodeHead size is zero\n");
@@ -105,7 +106,7 @@ void hashTable_remove(HashTable* hashTable, char* str) {
             p = p->next;
         }
         if (p != NULL) {
-            hashTable_removeHashNode(&(hashTable->data[index]), p);
+            hashTable_eraseHashNode(&(hashTable->data[index]), p);
         }
         else {
             _asm_puts("\nHashNode not exist\n");

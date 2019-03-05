@@ -46,6 +46,17 @@ typedef struct Pidt {
 	Adress baseAdress;
 } Pidt;
 
+typedef struct LinkListNode {
+	void* data;
+	struct LinkListNode* next;
+	struct LinkListNode* prev;
+} LinkListNode;
+
+typedef struct LoopLinkList {
+	LinkListNode* front;
+	LinkListNode* back;
+	Uint32 size;
+} LoopLinkList;
 
 //进程控制块
 typedef struct PCB {
@@ -54,9 +65,9 @@ typedef struct PCB {
 	Uint32 nextAddress;
 	Uint32 cr3Address;
 	Uint32 state;
-	struct TCB* tcbHead;
-	struct TCB* tcbCur;
-	struct PCB* nextPCB;
+	LoopLinkList* readyTcbQueue;
+	LinkListNode* curTcbNode;
+	LoopLinkList* waitTcbQueue;
 } Pcb;
 
 //线程控制块
@@ -77,7 +88,6 @@ typedef struct TCB {
 	Uint32 eip;
 	Uint32 esp00;
 	Uint32 state;
-	struct TCB* next;
 
 } Tcb;
 

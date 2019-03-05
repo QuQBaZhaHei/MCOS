@@ -68,19 +68,17 @@ Tss TSS;
 //任务状态段选择子
 Uint32 tssSel;
 
-Pcb* readyPcbHead = NULL;
+LoopLinkList* readyPcbQueue = NULL;
 
-Pcb* readyPcbEnd = NULL;
+LoopLinkList* waitPcbQueue = NULL;
+
+LinkListNode* curPcbNode = NULL;
 
 Pcb* runPcb = NULL;
 
+Tcb* runTcb = NULL;
+
 Tcb* shellTcb = NULL;
-
-Pcb* readyPcbNext = NULL;
-
-Pcb* waitPcbHead = NULL;
-
-Pcb* waitPcbEnd = NULL;
 
 Tcb* kernelTcb = NULL;
 
